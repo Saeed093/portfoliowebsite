@@ -304,6 +304,10 @@ export default function App() {
           { href: '#work', label: 'Work' },
           ...domains.map((d) => ({ href: '#' + d.id, label: d.short, c: d.accent })),
           { href: '#contact', label: 'Contact' },
+          // plain, crawlable pages for search engines (not in the top bar)
+          { href: 'profile/', label: 'Profile', c: 'var(--muted)' },
+          { href: 'projects/', label: 'All projects', c: 'var(--muted)' },
+          { href: 'faq/', label: 'FAQ', c: 'var(--muted)' },
         ]}
       />
 
