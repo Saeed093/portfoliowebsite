@@ -1,5 +1,6 @@
+import { useMemo } from 'react';
 import { motion } from 'framer-motion';
-import ProjectCard from './ProjectCard.jsx';
+import ProjectCard, { ClassifiedCard } from './ProjectCard.jsx';
 
 function Backdrop({ id, c }) {
   if (id === 'ai')
@@ -49,7 +50,15 @@ export default function Domain({ d, onOpen }) {
   // Order: featured video projects, then other video projects, then image-only projects.
   const hasVideo = (p) => p.media.some((m) => m.type === 'video');
   const rank = (p) => (hasVideo(p) ? (p.featured ? 0 : 1) : 2);
-  const sorted = [...d.projects].sort((a, b) => rank(a) - rank(b));
+  // Classified teasers land in random spots each visit (never first, so the page opens on real work).
+  const sorted = useMemo(() => {
+    const list = d.projects.filter((p) => !p.classified).sort((a, b) => rank(a) - rank(b));
+    d.projects.filter((p) => p.classified).forEach((c) => {
+      const at = 1 + Math.floor(Math.random() * list.length);
+      list.splice(at, 0, c);
+    });
+    return list;
+  }, [d]);
   return (
     <section className="domain" id={d.id} data-domain={d.id} style={{ '--c': d.accent }}>
       <Backdrop id={d.id} c={d.accent} />
@@ -81,7 +90,9 @@ export default function Domain({ d, onOpen }) {
         </motion.div>
       </div>
       <div className="grid">
-        {sorted.map((p, k) => <ProjectCard key={p.id} p={p} accent={d.accent} onOpen={(x) => onOpen(x, d)} index={k} />)}
+        {sorted.map((p, k) =>
+          p.classified ? <ClassifiedCard key={p.id} p={p} index={k} /> : <ProjectCard key={p.id} p={p} accent={d.accent} onOpen={(x) => onOpen(x, d)} index={k} />
+        )}
       </div>
     </section>
   );

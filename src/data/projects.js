@@ -1,3 +1,9 @@
+// Years of work, counted from 2016 so the site stays correct as time passes.
+export const START_YEAR = 2016;
+export const YEARS = new Date().getFullYear() - START_YEAR;
+const WORDS = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve', 'thirteen', 'fourteen', 'fifteen', 'sixteen', 'seventeen', 'eighteen', 'nineteen', 'twenty'];
+export const YEARS_WORD = WORDS[YEARS] || String(YEARS);
+
 // Portfolio content. Every project is described by what it does — no client,
 // unit or company names, no prices or quantities.
 
@@ -349,6 +355,10 @@ export const domains = [
     tagline: 'Sensors, simulators and field engineering, plus the procurement know-how to source, localise and deliver them.',
     skills: ['Radar', 'Thermal Imaging', 'Simulation', 'Embedded Systems', 'RF', 'Technical Evaluation', 'Supply Chain', 'Localisation'],
     projects: [
+      // Teasers only: no details exist in the code, just a category word and a date.
+      { id: 'cls-1', classified: true, tag: 'Weapon systems', date: '11 · 2023', file: 'File 07', title: '', summary: '', points: [], stack: [], media: [] },
+      { id: 'cls-2', classified: true, tag: 'Counter-UAS', date: '04 · 2025', file: 'File 12', title: '', summary: '', points: [], stack: [], media: [] },
+      { id: 'cls-3', classified: true, tag: 'Secure communications', date: '08 · 2026', file: 'File 19', title: '', summary: '', points: [], stack: [], media: [] },
       {
         id: 'gsr',
         title: 'Man-Portable Ground Surveillance Radar',
@@ -549,15 +559,6 @@ export const domains = [
         points: ['Single-cylinder engine explainer: watch the piston cycle on your desk', 'Furniture placement in the style of IKEA Place', 'Interactive AR menus and map experiences'],
         stack: ['Unity', 'Vuforia', 'C#', 'Android'],
         media: [v('x_ar_piston', 'Engine piston AR'), v('x_ar_ikea', 'Furniture placement')],
-      },
-      {
-        id: 'cgi',
-        title: 'CGI Shorts & Motion',
-        tag: 'Cinematic renders',
-        summary: 'Short cinematic pieces in Blender: space scenes, light studies and atmospheric shots.',
-        points: ['Scene composition and lighting', 'Particles, volumetrics and compositing'],
-        stack: ['Blender', 'Cycles / Eevee', 'Compositing'],
-        media: [v('x_anim1', 'Short 1'), v('x_anim2', 'Short 2'), v('x_anim3', 'Short 3')],
       },
       {
         id: 'solidworks',

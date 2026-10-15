@@ -2,18 +2,27 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 import { AnimatePresence, motion, useScroll, useSpring } from 'framer-motion';
 import Lenis from 'lenis';
 import { domains, timeline, credentials, contact } from './data/projects.js';
-import { CornerMarks, WorkOrbit, Credentials, ClockSentence, SocialCircles, Wordmark, MenuOverlay } from './components/Editorial.jsx';
+import { CornerMarks, WorkOrbit, Credentials, MenuOverlay } from './components/Editorial.jsx';
 import Hero from './components/Hero.jsx';
 import Domain from './components/Domain.jsx';
 import Modal from './components/Modal.jsx';
 import Avatar from './components/AvatarClassic.jsx';
 import Cursor from './components/Cursor.jsx';
 import Transformer from './components/Transformer.jsx';
+import ContactSection from './components/Contact.jsx';
 
 const HOME = { id: 'home', accent: '#2ee6ff', outfit: 'blazer', short: 'Home' };
 const ABOUT = { id: 'about', accent: '#e8edf3', outfit: 'blazer', short: 'About' };
 const CONTACT = { id: 'contact', accent: '#2ee6ff', outfit: 'blazer', short: 'Contact' };
 const ALL = [HOME, ...domains, ABOUT, CONTACT];
+
+// Where a nav link should land. The contact screen sits pinned under the work section,
+// so "contact" means the very end of the page.
+function targetFor(id) {
+  if (id === 'top') return 0;
+  if (id === 'contact') return Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
+  return document.getElementById(id);
+}
 
 function Loader({ done }) {
   const lines = ['BOOT SEQUENCE', 'LOADING VISION MODELS', 'ARMING PROPS', 'CALIBRATING SENSORS', 'RENDERING MESHES', 'READY'];
@@ -133,12 +142,12 @@ export default function App() {
   }, []);
 
   const scrollToId = (id) => {
-    const el = id === 'top' ? 0 : document.getElementById(id);
+    const el = targetFor(id);
     if (el === null) return;
     if (window.__lenis) {
       window.__lenis.start();
-      window.__lenis.scrollTo(el, { offset: -10 });
-    } else if (el === 0) window.scrollTo({ top: 0, behavior: 'smooth' });
+      window.__lenis.scrollTo(el, { offset: typeof el === 'number' ? 0 : -10 });
+    } else if (typeof el === 'number') window.scrollTo({ top: el, behavior: 'smooth' });
     else el.scrollIntoView({ behavior: 'smooth' });
   };
 
@@ -189,33 +198,44 @@ export default function App() {
       } else if (pending.current) {
         const id = pending.current;
         pending.current = null;
-        const el = id === 'top' ? 0 : document.getElementById(id);
+        if (window.__lenis) window.__lenis.resize();
+        const el = targetFor(id);
         if (window.__lenis && el !== null) {
-          window.__lenis.resize();
-          window.__lenis.scrollTo(el, { immediate: true, force: true, offset: -10 });
-        } else if (el) el.scrollIntoView();
+          window.__lenis.scrollTo(el, { immediate: true, force: true, offset: typeof el === 'number' ? 0 : -10 });
+        } else if (typeof el === 'number') window.scrollTo(0, el);
+        else if (el) el.scrollIntoView();
       }
     }, 120);
     return () => clearTimeout(t);
   }, [route]);
 
-  // Track the section in the middle of the viewport: it drives accent colour + avatar outfit.
+  // Track the section that is actually on top in the middle of the viewport (sections can overlap:
+  // Career slides over the name, the contact screen waits under the work ring).
+  // It drives the accent colour + avatar outfit.
   useEffect(() => {
-    const els = document.querySelectorAll('[data-domain]');
-    const io = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((e) => {
-          if (e.isIntersecting) {
-            const d = ALL.find((x) => x.id === e.target.dataset.domain);
-            if (d) setActive(d);
-          }
-        });
-      },
-      { rootMargin: '-45% 0px -50% 0px' }
-    );
-    els.forEach((el) => io.observe(el));
+    let raf = 0;
+    let last = null;
+    const check = () => {
+      raf = 0;
+      const el = document.elementFromPoint(window.innerWidth * 0.5, window.innerHeight * 0.48);
+      const sec = el?.closest?.('[data-domain]');
+      const id = sec?.dataset.domain;
+      if (!id || id === last) return;
+      last = id;
+      const d = ALL.find((x) => x.id === id);
+      if (d) setActive(d);
+    };
+    const onScroll = () => { if (!raf) raf = requestAnimationFrame(check); };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    window.addEventListener('resize', onScroll);
     if (page) setActive(page);
-    return () => io.disconnect();
+    const t = setTimeout(check, 300);
+    return () => {
+      window.removeEventListener('scroll', onScroll);
+      window.removeEventListener('resize', onScroll);
+      cancelAnimationFrame(raf);
+      clearTimeout(t);
+    };
   }, [route, loaded]);
 
   // The big hero avatar owns the first screen; the corner avatar appears once it has scrolled away.
@@ -326,27 +346,16 @@ export default function App() {
               <Credentials rows={credentials} />
             </section>
 
-            <div id="work"><WorkOrbit domains={domains} onOpen={onOpen} /></div>
-
-            <section className="contact" id="contact" data-domain="contact">
-              <ClockSentence video={`${import.meta.env.BASE_URL}media/x_anim2.mp4`} poster={`${import.meta.env.BASE_URL}media/x_anim2.jpg`} />
-              <p className="contact-kicker">Available for selected projects · write directly to:</p>
-              <div className="contact-list">
-                {contact.emails.map((e) => (
-                  <ContactRow key={e} label="Email" value={e} href={`mailto:${e}`} />
-                ))}
-                <ContactRow label="Phone / WhatsApp" value={contact.phone} copyValue={contact.phoneRaw} href={`tel:${contact.phoneRaw}`} />
-              </div>
-              <SocialCircles contact={contact} />
-              <p className="muted contact-loc">{contact.location}</p>
-              <Wordmark />
-              <footer><span>’{String(new Date().getFullYear()).slice(2)} © All rights reserved</span><span>made w/ hard requirements</span></footer>
-            </section>
+            {/* the contact screen waits underneath; the work section scrolls up off it */}
+            <div className="reveal-wrap">
+              <div id="work" className="reveal-cover"><WorkOrbit domains={domains} onOpen={onOpen} /></div>
+              <ContactSection contact={contact} />
+            </div>
           </>
         )}
       </main>
 
-      <Avatar outfit={active.outfit} accent={active.accent} onClick={nextDomain} className={heroIn ? 'avatar-away' : ''} />
+      <Avatar outfit={active.outfit} accent={active.accent} onClick={nextDomain} className={heroIn ? 'avatar-away' : active.id === 'contact' ? 'avatar-lift' : ''} />
 
       <AnimatePresence>{open && <Modal project={open.p} domain={open.d} onClose={() => setOpen(null)} />}</AnimatePresence>
     </>

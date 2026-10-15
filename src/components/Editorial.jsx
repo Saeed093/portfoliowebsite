@@ -2,7 +2,8 @@
 // corner wordmarks, staggered scroll-revealed statement, orbiting work ring,
 // hairline credentials table, clock sentence, round social buttons, full-screen menu.
 import { useEffect, useRef, useState } from 'react';
-import { AnimatePresence, motion, useScroll, useTransform, useSpring } from 'framer-motion';
+import { AnimatePresence, motion, useScroll, useTransform, useSpring, useMotionValue } from 'framer-motion';
+import { START_YEAR } from '../data/projects.js';
 
 /* ---------- 1. Faint giant name fixed in the bottom corners ---------- */
 export function CornerMarks() {
@@ -55,15 +56,103 @@ export function Manifesto() {
 }
 
 /* ---------- 3. "Work 2016–26": split heading with an orbiting ring of projects ---------- */
+// One letter of a heading that moves from its place in the row to its place in a column,
+// staying upright the whole way.
+function StackChar({ ch, t, dx, dy }) {
+  const x = useTransform(t, (v) => v * dx);
+  const y = useTransform(t, (v) => v * dy);
+  // the dash turns to stand vertical in the column; letters and digits stay upright
+  const rotate = useTransform(t, (v) => (ch === '–' || ch === '-' ? v * 90 : 0));
+  return <motion.span className="wo-ch" style={{ x, y, rotate }}>{ch === ' ' ? '\u00a0' : ch}</motion.span>;
+}
+
+// A heading that slides to a screen edge and restacks its letters vertically, upright, as you scroll.
+function StackWord({ text, side, p, rows }) {
+  const ref = useRef(null);
+  const chars = [...text];
+  const [m, setM] = useState({ dx: chars.map(() => 0), dy: chars.map(() => 0), gx: 0, gy: 0, s: 1 });
+  useEffect(() => {
+    const measure = () => {
+      const el = ref.current;
+      if (!el) return;
+      const kids = [...el.children];
+      const W = el.offsetWidth;
+      const fs = parseFloat(getComputedStyle(el).fontSize) || 100;
+      const lh = fs * 0.9;
+      const n = kids.length;
+      const maxW = Math.max(...kids.map((k) => k.offsetWidth));
+      // both columns share one letter size (set by the longer one) and the same vertical centre,
+      // kept above the corner avatar at the bottom right
+      const s = Math.min(0.62, (window.innerHeight * 0.56) / ((rows || n) * lh));
+      const box = el.offsetParent.getBoundingClientRect();
+      const center = box.left + el.offsetLeft + W / 2;
+      const pad = Math.max(14, window.innerWidth * 0.025);
+      const target = side === 'l' ? pad + (maxW * s) / 2 : window.innerWidth - pad - (maxW * s) / 2;
+      setM({
+        dx: kids.map((k) => W / 2 - (k.offsetLeft + k.offsetWidth / 2)),
+        dy: kids.map((k, i) => (i - (n - 1) / 2) * lh - (k.offsetTop - kids[0].offsetTop)),
+        gx: target - center,
+        gy: -window.innerHeight * 0.08,
+        s,
+      });
+    };
+    measure();
+    document.fonts?.ready?.then(measure);
+    window.addEventListener('resize', measure);
+    return () => window.removeEventListener('resize', measure);
+  }, [text, side, rows]);
+  const gx = useTransform(p, [0.05, 0.85], [0, m.gx]);
+  const gy = useTransform(p, [0.4, 0.85], [0, m.gy]);
+  const t = useTransform(p, [0.4, 0.85], [0, 1]);
+  const sc = useTransform(p, [0.4, 0.85], [1, m.s]);
+  return (
+    <motion.span ref={ref} className={`wo-word wo-${side}`} style={{ x: gx, y: gy, scale: sc }}>
+      {chars.map((ch, i) => <StackChar key={i} ch={ch} t={t} dx={m.dx[i]} dy={m.dy[i]} />)}
+    </motion.span>
+  );
+}
+
 export function WorkOrbit({ domains, onOpen }) {
   const ref = useRef(null);
+  const stickyRef = useRef(null);
   const { scrollYProgress } = useScroll({ target: ref, offset: ['start start', 'end end'] });
   const p = useSpring(scrollYProgress, { stiffness: 90, damping: 24 });
-  const leftX = useTransform(p, [0.05, 0.45], ['0vw', '-24vw']);
-  const rightX = useTransform(p, [0.05, 0.45], ['0vw', '24vw']);
-  const rot = useTransform(p, [0, 1], [20, -340]);
+
+  // Spin: vertical scroll drives it, and the ring can also be dragged or swiped left/right.
+  const extra = useMotionValue(0);
+  const extraS = useSpring(extra, { stiffness: 120, damping: 22 });
+  const rot = useTransform([p, extraS], ([v, e]) => 20 - 360 * v + e);
   const scale = useTransform(p, [0.02, 0.4], [0.35, 1]);
   const ringOpacity = useTransform(p, [0.02, 0.2, 0.9, 1], [0, 1, 1, 0.4]);
+
+  const drag = useRef({ on: false, x: 0, moved: 0 });
+  useEffect(() => {
+    const el = stickyRef.current;
+    if (!el) return;
+    const wheel = (e) => {
+      if (Math.abs(e.deltaX) > Math.abs(e.deltaY) && Math.abs(e.deltaX) > 1) {
+        e.preventDefault();
+        extra.set(extra.get() - e.deltaX * 0.35);
+      }
+    };
+    el.addEventListener('wheel', wheel, { passive: false });
+    return () => el.removeEventListener('wheel', wheel);
+  }, [extra]);
+  const onDown = (e) => { drag.current = { on: true, x: e.clientX, moved: 0 }; };
+  const onMove = (e) => {
+    const d = drag.current;
+    if (!d.on) return;
+    const dx = e.clientX - d.x;
+    d.x = e.clientX;
+    d.moved += Math.abs(dx);
+    extra.set(extra.get() + dx * 0.45);
+  };
+  const onUp = () => { drag.current.on = false; };
+  // a drag should not count as a click on a card
+  const onClickCapture = (e) => {
+    if (drag.current.moved > 8) { e.stopPropagation(); e.preventDefault(); }
+    drag.current.moved = 0;
+  };
 
   // One card per category, using the cover of its lead (featured) project.
   const ring = domains.map((d) => {
@@ -72,13 +161,23 @@ export function WorkOrbit({ domains, onOpen }) {
     return { d, src: m.type === 'video' ? m.poster : m.src, video: m.type === 'video' ? m.src : null };
   });
   const step = 360 / ring.length;
+  const nudge = (dir) => extra.set(extra.get() + dir * step);
   const go = (id) => {
     window.location.hash = id;
   };
 
   return (
     <section className="work-orbit" ref={ref} data-domain="home" aria-label="Selected work">
-      <div className="wo-sticky">
+      <div
+        className="wo-sticky"
+        ref={stickyRef}
+        onPointerDown={onDown}
+        onPointerMove={onMove}
+        onPointerUp={onUp}
+        onPointerLeave={onUp}
+        onPointerCancel={onUp}
+        onClickCapture={onClickCapture}
+      >
         <motion.div className="wo-ring-wrap" style={{ scale, opacity: ringOpacity }}>
           <motion.div className="wo-ring" style={{ rotateY: rot }}>
             {ring.map((it, k) => (
@@ -89,8 +188,9 @@ export function WorkOrbit({ domains, onOpen }) {
                 style={{ transform: `rotateY(${k * step}deg) translateZ(var(--r))`, '--c': it.d.accent }}
                 onClick={() => go(it.d.id)}
                 aria-label={`Go to ${it.d.title}`}
+                draggable={false}
               >
-                {it.video ? <video src={it.video} poster={it.src} muted loop autoPlay playsInline /> : <img src={it.src} alt="" loading="lazy" />}
+                {it.video ? <video src={it.video} poster={it.src} muted loop autoPlay playsInline /> : <img src={it.src} alt="" loading="lazy" draggable={false} />}
                 <span className="wc-index">{it.d.index}</span>
                 <span className="wc-count">{it.d.projects.length} projects</span>
                 <span className="wc-title">{it.d.title}</span>
@@ -99,10 +199,22 @@ export function WorkOrbit({ domains, onOpen }) {
           </motion.div>
         </motion.div>
         <div className="wo-title" aria-hidden="true">
-          <motion.span style={{ x: leftX }}>Work</motion.span>
-          <motion.span style={{ x: rightX }}>2016–26</motion.span>
+          {(() => {
+            const years = `${START_YEAR}–${String(new Date().getFullYear()).slice(2)}`;
+            const rows = Math.max(4, years.length);
+            return (
+              <>
+                <StackWord text="WORK" side="l" p={p} rows={rows} />
+                <StackWord text={years} side="r" p={p} rows={rows} />
+              </>
+            );
+          })()}
         </div>
-        <p className="wo-hint">Scroll to spin · pick a field to open its projects</p>
+        <div className="wo-controls">
+          <button type="button" className="wo-arrow" onClick={() => nudge(1)} aria-label="Spin left">←</button>
+          <p className="wo-hint">Scroll or drag sideways to spin · pick a field</p>
+          <button type="button" className="wo-arrow" onClick={() => nudge(-1)} aria-label="Spin right">→</button>
+        </div>
       </div>
     </section>
   );
@@ -184,7 +296,7 @@ export function SocialCircles({ contact }) {
 }
 
 export function Wordmark() {
-  return <div className="wordmark" aria-hidden="true">saeediqbal</div>;
+  return <p className="wordmark wordmark-line">I’m always up for a challenge.</p>;
 }
 
 /* ---------- 7. Full-screen numbered menu ---------- */

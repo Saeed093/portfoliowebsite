@@ -2,6 +2,7 @@ import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 
 const RippleReveal = lazy(() => import('./RippleRevealGL.jsx'));
 import { cubicBezier, motion, useMotionValueEvent, useScroll, useSpring, useTransform } from 'framer-motion';
+import { YEARS, YEARS_WORD } from '../data/projects.js';
 
 const EASE = cubicBezier(0.75, 0, 0.15, 1);
 
@@ -70,10 +71,42 @@ function Count({ to, suffix = '', go }) {
   return <>{n}{suffix}</>;
 }
 
+// Plays once per page load: the first time a visitor scrolls down into this section,
+// it glides through the whole assembly on its own. After that, scrolling works normally.
+let autoPlayed = false;
+const easeInOut = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
+
 export default function Transformer({ total }) {
-  const ref = useRef(null);
+  const ref = useRef(null); // the scroll track (assembly length), not the whole section
   const { scrollYProgress } = useScroll({ target: ref, offset: ['start start', 'end end'] });
   const p = useSpring(scrollYProgress, { stiffness: 110, damping: 26 });
+  // Trigger as soon as the black section scrolls into view (its top passes 70% of the screen),
+  // not when it reaches the very top, so nobody is left looking at an empty screen.
+  const { scrollYProgress: enter } = useScroll({ target: ref, offset: ['start 0.7', 'start start'] });
+  const lastE = useRef(0);
+  useMotionValueEvent(enter, 'change', (e) => {
+    const goingDown = e > lastE.current;
+    lastE.current = e;
+    if (autoPlayed) return;
+    if (scrollYProgress.get() >= 0.5) { autoPlayed = true; return; } // arrived by a jump link
+    if (goingDown && e > 0.01) {
+      autoPlayed = true;
+      const el = ref.current;
+      if (!el) return;
+      const top = el.getBoundingClientRect().top + window.scrollY;
+      const target = top + (el.offsetHeight - window.innerHeight) * 0.985;
+      const distance = Math.abs(target - window.scrollY);
+      // a calm, readable pace through the whole sequence
+      const duration = Math.min(5.2, Math.max(3.6, distance / 650));
+      const lenis = window.__lenis;
+      if (lenis) {
+        // lock: trackpad momentum and leftover wheel events can't cancel the glide halfway
+        lenis.scrollTo(target, { duration, easing: easeInOut, lock: true, force: true });
+      } else {
+        window.scrollTo({ top: target, behavior: 'smooth' });
+      }
+    }
+  });
   const letters = NAME.join('').length;
 
   const nameY = useTransform(p, [0.62, 0.8], ['0vh', '-14vh']);
@@ -81,7 +114,10 @@ export default function Transformer({ total }) {
   const seam = useTransform(p, [0.45, 0.6], [0, 1]);
   const textOpacity = useTransform(p, [0.7, 0.84], [0, 1]);
   const textY = useTransform(p, [0.7, 0.84], [40, 0]);
-  const hint = useTransform(p, [0, 0.08], [1, 0]);
+  // the hint stays pinned at the top until the name is fully assembled
+  const hint = useTransform(p, [0.5, 0.6], [1, 0]);
+  const pct = useTransform(p, (v) => `${Math.min(100, Math.max(0, Math.round((v / 0.5) * 100)))}%`);
+  const bar = useTransform(p, [0, 0.5], [0, 1]);
 
   const stickyRef = useRef(null);
   const [assembled, setAssembled] = useState(false);
@@ -93,11 +129,17 @@ export default function Transformer({ total }) {
 
   let idx = 0;
   return (
-    <section className="transformer" ref={ref} data-domain="home" aria-label="About Saeed Iqbal">
+    <section className="transformer" data-domain="home" aria-label="About Saeed Iqbal">
+      {/* the assembly plays over this track; the extra screen after it lets the finished
+          frame stay put while the Career section slides up over it */}
+      <div className="tf-track" ref={ref} aria-hidden="true" />
       <div className="tf-sticky" ref={stickyRef}>
         <Suspense fallback={null}><RippleReveal host={stickyRef} active={assembled} /></Suspense>
         <motion.p className="tf-reveal-hint" style={{ opacity: revealHint }}>Move your cursor through the dark</motion.p>
-        <motion.p className="tf-hint" style={{ opacity: hint }}>Keep scrolling · assembling</motion.p>
+        <motion.div className="tf-hint" style={{ opacity: hint }}>
+          <span>Keep scrolling · assembling <motion.b>{pct}</motion.b></span>
+          <span className="tf-hint-bar"><motion.i style={{ scaleX: bar }} /></span>
+        </motion.div>
         <motion.h2 className="tf-name" style={{ y: nameY, scale: nameScale }} aria-label="Saeed Iqbal">
           {NAME.map((word) => (
             <span className="tf-word" key={word}>
@@ -112,12 +154,12 @@ export default function Transformer({ total }) {
 
         <motion.div className="tf-after" style={{ opacity: textOpacity, y: textY }}>
           <p className="tf-para">
-            CTO and AI product manager, mechatronics engineer and former Army captain. Eight years turning hard requirements into working systems:
+            CTO and AI product manager, mechatronics engineer and former Army captain. {YEARS_WORD.charAt(0).toUpperCase() + YEARS_WORD.slice(1)} years turning hard requirements into working systems:
             vision AI on the edge, heavy-lift drones, field sensors and the 3D models behind them.
           </p>
           <div className="tf-stats" ref={statsRef}>
-            <div><b><Count to={8} suffix="+" go={statsIn} /></b><span>years building</span></div>
-            <div><b><Count to={total} go={statsIn} /></b><span>projects on this site</span></div>
+            <div><b><Count to={YEARS} suffix="+" go={statsIn} /></b><span>years building</span></div>
+            <div><b><Count to={total} go={statsIn} /></b><span>selected projects from each domain</span></div>
             <div><b><Count to={4} go={statsIn} /></b><span>domains</span></div>
             <div><b><Count to={3} go={statsIn} /></b><span>countries, one team</span></div>
           </div>

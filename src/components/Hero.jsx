@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, lazy, Suspense } from 'react';
 import { AnimatePresence, motion, useScroll, useTransform } from 'framer-motion';
 import Avatar from './Avatar.jsx';
+import { YEARS_WORD } from '../data/projects.js';
 
 const Terrain = lazy(() => import('./Terrain.jsx'));
 const B = import.meta.env.BASE_URL;
@@ -23,7 +24,7 @@ function useClock() {
 }
 
 // Scales its content so one line spans the full width of its container.
-function FitLine({ children, deps }) {
+function FitLine({ children, deps, onSize }) {
   const box = useRef(null);
   const inner = useRef(null);
   const [size, setSize] = useState(100);
@@ -33,7 +34,11 @@ function FitLine({ children, deps }) {
       const cur = parseFloat(getComputedStyle(inner.current).fontSize) || 100;
       const w = (inner.current.scrollWidth * 100) / cur; // width at 100px
       const avail = box.current.clientWidth;
-      if (w > 0) setSize(Math.max(24, Math.min(320, Math.floor((100 * avail) / w * 10) / 10)));
+      if (w > 0) {
+        const next = Math.max(24, Math.min(320, Math.floor((100 * avail) / w * 10) / 10));
+        setSize(next);
+        onSize?.(next);
+      }
     };
     fit();
     document.fonts?.ready?.then(fit);
@@ -76,6 +81,10 @@ export default function Hero({ accent }) {
     return () => clearInterval(id);
   }, []);
   const role = ROLES[r];
+  // Reserve the height of the tallest phrase so the lines below never jump when the phrase changes.
+  const [sizes, setSizes] = useState({});
+  const report = (key) => (v) => setSizes((h) => (h[key] === v ? h : { ...h, [key]: v }));
+  const maxH = ROLES.reduce((m, _, i) => Math.max(m, narrow ? (sizes[i + 'a'] || 0) + (sizes[i + 'b'] || 0) : sizes[i] || 0), 0);
   // the logo's "I" follows the colour of the phrase on screen
   useEffect(() => {
     const top = document.getElementById('top');
@@ -91,7 +100,19 @@ export default function Hero({ accent }) {
       <div className="hero-vignette" />
 
       <motion.div className="hero-inner" style={{ y: textY, opacity: textOpacity }}>
-        <h1 className="hero-spin" aria-live="polite" aria-label={`${role.pre} ${role.post}`}>
+        <h1 className="hero-spin" aria-live="polite" aria-label={`${role.pre} ${role.post}`} style={maxH ? { height: Math.ceil(maxH * 1.04) + 'px' } : undefined}>
+          <span className="hs-measure" aria-hidden="true">
+            {ROLES.map((ro, i) =>
+              narrow ? (
+                <span key={i}>
+                  <FitLine deps={[narrow]} onSize={report(i + 'a')}>{ro.pre}<span className="hs-chip" /></FitLine>
+                  <FitLine deps={[narrow]} onSize={report(i + 'b')}>{ro.post}</FitLine>
+                </span>
+              ) : (
+                <FitLine key={i} deps={[narrow]} onSize={report(i)}>{ro.pre}<span className="hs-chip" />{ro.post}</FitLine>
+              )
+            )}
+          </span>
           <AnimatePresence mode="wait">
             <motion.span
               key={r}
@@ -121,7 +142,7 @@ export default function Hero({ accent }) {
           </AnimatePresence>
         </h1>
         <motion.p className="hero-blurb" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.9 }}>
-          AI, drones, defense systems and 3D work, shaped by eight years of building for the field.
+          AI, drones, defense systems and 3D work, shaped by {YEARS_WORD} years of building for the field.
         </motion.p>
       </motion.div>
 
