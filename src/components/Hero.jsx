@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState, lazy, Suspense } from 're
 import { AnimatePresence, motion, useScroll, useTransform } from 'framer-motion';
 import Avatar from './Avatar.jsx';
 import { YEARS_WORD } from '../data/projects.js';
+import { usePauseOffscreen } from './Editorial.jsx';
 
 const Terrain = lazy(() => import('./Terrain.jsx'));
 const B = import.meta.env.BASE_URL;
@@ -68,6 +69,7 @@ export default function Hero({ accent }) {
   const narrow = useNarrow();
   const ref = useRef(null);
   const { scrollYProgress } = useScroll({ target: ref, offset: ['start start', 'end start'] });
+  usePauseOffscreen(ref);
   const avScale = useTransform(scrollYProgress, [0, 0.6], [1, 0.35]);
   const avX = useTransform(scrollYProgress, [0, 0.6], ['0vw', '38vw']);
   const avY = useTransform(scrollYProgress, [0, 0.6], ['0vh', '18vh']);

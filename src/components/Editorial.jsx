@@ -2,7 +2,7 @@
 // corner wordmarks, staggered scroll-revealed statement, orbiting work ring,
 // hairline credentials table, clock sentence, round social buttons, full-screen menu.
 import { useEffect, useRef, useState } from 'react';
-import { AnimatePresence, motion, useScroll, useTransform, useSpring, useMotionValue } from 'framer-motion';
+import { AnimatePresence, motion, useScroll, useTransform, useSpring, useMotionValue, useMotionValueEvent } from 'framer-motion';
 import { START_YEAR } from '../data/projects.js';
 
 /* ---------- 1. Faint giant name fixed in the bottom corners ---------- */
@@ -112,18 +112,56 @@ function StackWord({ text, side, p, rows }) {
   );
 }
 
+// Pause every video inside an element while it is off screen (saves the phone's GPU and battery).
+export function usePauseOffscreen(ref) {
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const io = new IntersectionObserver(([e]) => {
+      el.querySelectorAll('video').forEach((v) => {
+        if (e.isIntersecting) v.play().catch(() => {});
+        else v.pause();
+      });
+    }, { rootMargin: '100px 0px' });
+    io.observe(el);
+    return () => io.disconnect();
+  }, [ref]);
+}
+
 export function WorkOrbit({ domains, onOpen }) {
   const ref = useRef(null);
   const stickyRef = useRef(null);
   const { scrollYProgress } = useScroll({ target: ref, offset: ['start start', 'end end'] });
   const p = useSpring(scrollYProgress, { stiffness: 90, damping: 24 });
+  usePauseOffscreen(ref);
 
   // Spin: vertical scroll drives it, and the ring can also be dragged or swiped left/right.
+  // When the ring comes to rest it always settles with one field square in the centre, highlighted.
+  const n = domains.length;
+  const stepA = 360 / n;
   const extra = useMotionValue(0);
   const extraS = useSpring(extra, { stiffness: 120, damping: 22 });
-  const rot = useTransform([p, extraS], ([v, e]) => 20 - 360 * v + e);
+  const baseRot = (v) => -360 * v;
+  const rot = useTransform([p, extraS], ([v, e]) => baseRot(v) + e);
   const scale = useTransform(p, [0.02, 0.4], [0.35, 1]);
-  const ringOpacity = useTransform(p, [0.02, 0.2, 0.9, 1], [0, 1, 1, 0.4]);
+  const ringOpacity = useTransform(p, [0.02, 0.2], [0, 1]);
+  const [front, setFront] = useState(0);
+  const frontOf = (angle) => ((Math.round(-angle / stepA) % n) + n) % n;
+  useMotionValueEvent(rot, 'change', (a) => {
+    const k = frontOf(a);
+    setFront((f) => (f === k ? f : k));
+  });
+  const snapT = useRef(0);
+  const snap = () => {
+    clearTimeout(snapT.current);
+    snapT.current = setTimeout(() => {
+      if (drag.current.on) return;
+      const cur = baseRot(scrollYProgress.get()) + extra.get();
+      extra.set(extra.get() + (Math.round(cur / stepA) * stepA - cur));
+    }, 160);
+  };
+  useMotionValueEvent(scrollYProgress, 'change', snap);
+  useEffect(() => { snap(); return () => clearTimeout(snapT.current); }, []);
 
   const drag = useRef({ on: false, x: 0, moved: 0 });
   useEffect(() => {
@@ -133,6 +171,7 @@ export function WorkOrbit({ domains, onOpen }) {
       if (Math.abs(e.deltaX) > Math.abs(e.deltaY) && Math.abs(e.deltaX) > 1) {
         e.preventDefault();
         extra.set(extra.get() - e.deltaX * 0.35);
+        snap();
       }
     };
     el.addEventListener('wheel', wheel, { passive: false });
@@ -147,7 +186,7 @@ export function WorkOrbit({ domains, onOpen }) {
     d.moved += Math.abs(dx);
     extra.set(extra.get() + dx * 0.45);
   };
-  const onUp = () => { drag.current.on = false; };
+  const onUp = () => { if (drag.current.on) { drag.current.on = false; snap(); } };
   // a drag should not count as a click on a card
   const onClickCapture = (e) => {
     if (drag.current.moved > 8) { e.stopPropagation(); e.preventDefault(); }
@@ -161,7 +200,7 @@ export function WorkOrbit({ domains, onOpen }) {
     return { d, src: m.type === 'video' ? m.poster : m.src, video: m.type === 'video' ? m.src : null };
   });
   const step = 360 / ring.length;
-  const nudge = (dir) => extra.set(extra.get() + dir * step);
+  const nudge = (dir) => { extra.set(extra.get() + dir * step); snap(); };
   const go = (id) => {
     window.location.hash = id;
   };
@@ -184,7 +223,7 @@ export function WorkOrbit({ domains, onOpen }) {
               <button
                 key={it.d.id}
                 type="button"
-                className="wo-item wo-cat"
+                className={`wo-item wo-cat ${k === front ? 'is-front' : ''}`}
                 style={{ transform: `rotateY(${k * step}deg) translateZ(var(--r))`, '--c': it.d.accent }}
                 onClick={() => go(it.d.id)}
                 aria-label={`Go to ${it.d.title}`}
@@ -210,6 +249,9 @@ export function WorkOrbit({ domains, onOpen }) {
             );
           })()}
         </div>
+        <a className="wo-front" href={`#${ring[front].d.id}`} style={{ '--c': ring[front].d.accent }}>
+          <span>{ring[front].d.index}</span> {ring[front].d.title} <b>Open →</b>
+        </a>
         <div className="wo-controls">
           <button type="button" className="wo-arrow" onClick={() => nudge(1)} aria-label="Spin left">←</button>
           <p className="wo-hint">Scroll or drag sideways to spin · pick a field</p>

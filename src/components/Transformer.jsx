@@ -76,6 +76,48 @@ function Count({ to, suffix = '', go }) {
 let autoPlayed = false;
 const easeInOut = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
 
+// Phones: the finger's momentum scroll fights any programmatic scroll and makes it judder.
+// So for the length of the glide, touch scrolling is paused (which also kills momentum)
+// and one rAF loop moves the page; control returns the moment it lands.
+function touchGlide(target, duration) {
+  // Only the root element is locked: locking <body> too would turn it into its own scroll box
+  // and every pinned (sticky) screen would stop pinning for the length of the glide.
+  // (body's own overflow-x rule would do the same once html stops passing it to the viewport,
+  // so body is set to visible for the glide.)
+  const html = document.documentElement;
+  const body = document.body;
+  const prev = [html.style.overflow, html.style.touchAction, body.style.overflow];
+  html.style.overflow = 'hidden';
+  html.style.touchAction = 'none';
+  body.style.overflow = 'visible';
+  const block = (e) => e.cancelable && e.preventDefault();
+  window.addEventListener('touchmove', block, { passive: false });
+  window.addEventListener('wheel', block, { passive: false });
+  const lenis = window.__lenis;
+  lenis?.stop();
+  const start = window.scrollY;
+  const t0 = performance.now();
+  const ms = duration * 1000;
+  const step = (now) => {
+    const k = Math.min(1, (now - t0) / ms);
+    window.scrollTo(0, start + (target - start) * easeInOut(k));
+    if (k < 1) requestAnimationFrame(step);
+    else {
+      html.style.overflow = prev[0];
+      html.style.touchAction = prev[1];
+      body.style.overflow = prev[2];
+      window.removeEventListener('touchmove', block);
+      window.removeEventListener('wheel', block);
+      if (lenis) {
+        lenis.start();
+        lenis.scrollTo(target, { immediate: true, force: true });
+      }
+    }
+  };
+  // let the current frame's momentum die before taking over
+  requestAnimationFrame(() => requestAnimationFrame(step));
+}
+
 export default function Transformer({ total }) {
   const ref = useRef(null); // the scroll track (assembly length), not the whole section
   const { scrollYProgress } = useScroll({ target: ref, offset: ['start start', 'end end'] });
@@ -97,9 +139,11 @@ export default function Transformer({ total }) {
       const target = top + (el.offsetHeight - window.innerHeight) * 0.985;
       const distance = Math.abs(target - window.scrollY);
       // a calm, readable pace through the whole sequence
-      const duration = Math.min(5.2, Math.max(3.6, distance / 650));
+      const duration = 1.35 * Math.min(5.2, Math.max(3.6, distance / 650)); // 35% slower than the first cut
       const lenis = window.__lenis;
-      if (lenis) {
+      if (window.matchMedia('(pointer: coarse)').matches) {
+        touchGlide(target, duration);
+      } else if (lenis) {
         // lock: trackpad momentum and leftover wheel events can't cancel the glide halfway
         lenis.scrollTo(target, { duration, easing: easeInOut, lock: true, force: true });
       } else {

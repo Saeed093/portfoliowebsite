@@ -188,7 +188,9 @@ export default function RippleRevealGL({ host, active, color = '#2ee6ff' }) {
 
     // pointer → drops along the path
     let cur = null, prev = null;
+    let lastMove = 0; // the water settles a few seconds after the last touch; then the loop idles
     const onMove = (e) => {
+      lastMove = performance.now();
       const r = hostEl.getBoundingClientRect();
       cur = { x: (e.clientX - r.left) / r.width, y: 1 - (e.clientY - r.top) / r.height };
     };
@@ -206,7 +208,10 @@ export default function RippleRevealGL({ host, active, color = '#2ee6ff' }) {
     let raf, alive = true, wasActive = false;
     const frame = () => {
       if (!alive) return;
-      if (activeRef.current) {
+      const idle = performance.now() - lastMove > 3500;
+      if (activeRef.current && idle) {
+        if (wasActive) { renderer.setRenderTarget(null); renderer.clear(); wasActive = false; }
+      } else if (activeRef.current) {
         wasActive = true;
         if (cur && prev) {
           const dx = cur.x - prev.x, dy = cur.y - prev.y;

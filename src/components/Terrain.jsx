@@ -1,4 +1,4 @@
-import { useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 
@@ -72,9 +72,23 @@ function Grid({ color }) {
 }
 
 export default function Terrain({ color }) {
+  // Stop rendering once the hero is off screen, so the GPU is free for the scroll animations below.
+  const [live, setLive] = useState(true);
+  const host = useRef(null);
+  useEffect(() => {
+    const el = host.current?.parentElement;
+    if (!el) return;
+    const io = new IntersectionObserver(([e]) => setLive(e.isIntersecting), { rootMargin: '80px 0px' });
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
+  const coarse = typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches;
   return (
-    <Canvas className="terrain" dpr={[1, 1.6]} camera={{ position: [0, 4, 10], fov: 60 }} gl={{ antialias: true, alpha: true }}>
+    <>
+    <span ref={host} hidden />
+    <Canvas className="terrain" frameloop={live ? 'always' : 'never'} dpr={coarse ? [1, 1.25] : [1, 1.6]} camera={{ position: [0, 4, 10], fov: 60 }} gl={{ antialias: true, alpha: true }}>
       <Grid color={color} />
     </Canvas>
+    </>
   );
 }
